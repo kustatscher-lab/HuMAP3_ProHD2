@@ -108,7 +108,7 @@ for(i in unique(paralog_egg$eggNOG)){
   paralog_pairs_tmp = paralog_egg[eggNOG == i,Entry] |> 
     combn(2) |> t() |> as.data.table() 
   paralog_pairs_tmp[,eggNOG:=i]
-  paralog_pairs = rbind(paralog_pairs_tmp,eggNOG)
+  paralog_pairs = rbind(paralog_pairs_tmp,paralog_pairs)
   }
 setnames(paralog_pairs,c('Protein_1','Protein_2',''))
 
@@ -140,19 +140,24 @@ pairs_to_clust = fread(here::here('out','datasets','pairs_to_clust.gz'))
 mut_excl_old = fread(here::here('in','datasets','refiltered_mutually_exclusive_and_structurally_consistent_protein_pairs_03OCT2024.tsv') )
 mut_excl_old =mut_excl_old[,.(protein_1,protein_2,cmmn_p_homodimer)]
 mut_excl = fread(here::here('in','datasets','MutEx_pairs_refiltered_w_large_comps_removed_04OCT2024.tsv'))
+new_pairs = fread(here::here('in','datasets',
+                             'TableS4_structurally_consistent_mutually_exclusive_modeled_pairs_w_janes_w_burke_12MAR2024.csv'))
+new_pairs = new_pairs[,.(pair_1,pair_2,interface,common_protein,protein_1,protein_2)]
+setnames(new_pairs,c('pair_1','pair_2','interface'),c('V1','V2','class'))
                  # '/mnt/kustatscher/members/savvas/LFQ_DIA_SWATH/mutually_exclusive_dimer_analysis_10SEP2024.csv')
 # mut_excl = fread(here::here('in','datasets','humap3_mutual_exclusion_vs_non_dimers_annotated_homodimers_30JUL2024.csv'))
 mut_excl = merge(mut_excl,mut_excl_old,c('protein_1','protein_2'))
 mut_excl  =mut_excl[interface_overlap=='yes',.(V1,V2,common_protein,protein_1,protein_2,cmmn_p_homodimer)]
 mut_excl[,Class:='mut_excl']
+mut_excl = new_pairs
 setnames(mut_excl,c('protein_1','protein_2'),c('Protein_1','Protein_2'))
 mut_excl[Protein_1<Protein_2,`:=`(Protein_1=Protein_2,
                                   Protein_2 = Protein_1)]
 mut_excl[Protein_1<Protein_2]
 
 ### read Procan and normalise #### 
-to_load = list.files('/home/v1skourt/Downloads/drug_peptide',full.names = T)
-mapping_1 = fread(to_load |> str_subset('_average'))
+# to_load = list.files('/home/v1skourt/Downloads/drug_peptide',full.names = T)
+mapping_1 = fread(here::here('in','datasets','ProCan-DepMapSanger_mapping_file_averaged.txt'))
 tissue_n = mapping_1[,.N, by = Cancer_type]
 
 ProCan = readxl::read_xlsx(here::here('in','datasets','1-s2.0-S1535610822002744-mmc3.xlsx'), sheet = 2, skip = 1)
@@ -191,11 +196,13 @@ ggsave(here::here('out','plots','Procan_protein_SD_subset.pdf'))
 
 ### Global bicor #### 
 Pairwise_procan = f_BIC(ProCan_matrix_norm,'bicor_Procan_across_tissue',30)
-fwrite(Pairwise_procan,here::here('out','datasets','ProCAN_global_bicor_min_30.gz'))
+# fwrite(Pairwise_procan,here::here('out','datasets','ProCAN_global_bicor_min_30.gz'))
 Pairwise_procan = fread(here::here('out','datasets','ProCAN_global_bicor_min_30.gz'))
 
 pairs_to_clust_mutexc = merge(pairs_to_clust,mut_excl, by = c('Protein_1','Protein_2'),all.x = T)
+pairs_to_clust_mutexc[,cmmn_p_homodimer:='non_homodimer']
 Bicor_pairs = merge(Pairwise_procan,pairs_to_clust_mutexc,by =c('Protein_1','Protein_2'), all.x = T)
+# Bicor_pairs[,cmmn_p_homodimer:=]
 Bicor_pairs[,Type:= fifelse(is.na(cmmn_p_homodimer),as.character(!is.na(clustID)),cmmn_p_homodimer)]
 Bicor_pairs[Protein_1 =='Q8WVM7'& Protein_2 == 'Q8N3U4']
 
@@ -671,7 +678,7 @@ ggplot(subunit_complex_pairs,aes(x= diff_abundance, fill =Type))+
 ggsave(here::here('out','plots','Procan_expression_similarity.pdf'))
 
 ### humap3 jaccard score #### 
-humap_3_pairwise =  fread(here::here('in','datasets','Copy of ComplexPortal_model_unlabeledpredictions_ALL_sorted_202305.pairsWprob'))
+humap_3_pairwise =  fread(here::here('in','datasets','ComplexPortal_model_unlabeledpredictions_ALL_sorted_202305.pairsWprob'))
 setnames(humap_3_pairwise,c('Protein_1','Protein_2','PPI_score'))
 # threshold for positive interactors
 interactors = humap_3_pairwise[PPI_score>0.8]
@@ -783,34 +790,34 @@ plotting_mutexcl |>
   ggplot(aes(x = jaccard, fill = cmmn_p_homodimer, alpha= 0.5))+
   geom_density()
 
-mut_excl_old = fread(here::here('in','datasets','refiltered_mutually_exclusive_and_structurally_consistent_protein_pairs_03OCT2024.tsv') )
-mut_excl_old =mut_excl_old[,.(protein_1,protein_2,cmmn_p_homodimer)]
-mut_excl = fread(here::here('in','datasets','MutEx_pairs_refiltered_w_large_comps_removed_04OCT2024.tsv'))
-# '/mnt/kustatscher/members/savvas/LFQ_DIA_SWATH/mutually_exclusive_dimer_analysis_10SEP2024.csv')
-# mut_excl = fread(here::here('in','datasets','humap3_mutual_exclusion_vs_non_dimers_annotated_homodimers_30JUL2024.csv'))
-mut_excl = merge(mut_excl,mut_excl_old,c('protein_1','protein_2'))
-mut_excl  =mut_excl[,.(V1,V2,common_protein,protein_1,protein_2,interface_overlap,cmmn_p_homodimer)]
-mut_excl[,Class:='mut_excl']
-setnames(mut_excl,c('protein_1','protein_2'),c('Protein_1','Protein_2'))
-mut_excl[Protein_1<Protein_2,`:=`(Protein_1=Protein_2,
-                                  Protein_2 = Protein_1)]
-mut_excl[Protein_1<Protein_2]
+# mut_excl_old = fread(here::here('in','datasets','refiltered_mutually_exclusive_and_structurally_consistent_protein_pairs_03OCT2024.tsv') )
+# mut_excl_old =mut_excl_old[,.(protein_1,protein_2,cmmn_p_homodimer)]
+# mut_excl = fread(here::here('in','datasets','MutEx_pairs_refiltered_w_large_comps_removed_04OCT2024.tsv'))
+# # '/mnt/kustatscher/members/savvas/LFQ_DIA_SWATH/mutually_exclusive_dimer_analysis_10SEP2024.csv')
+# # mut_excl = fread(here::here('in','datasets','humap3_mutual_exclusion_vs_non_dimers_annotated_homodimers_30JUL2024.csv'))
+# mut_excl = merge(mut_excl,mut_excl_old,c('protein_1','protein_2'))
+# mut_excl  =mut_excl[,.(V1,V2,common_protein,protein_1,protein_2,interface_overlap,cmmn_p_homodimer)]
+# mut_excl[,Class:='mut_excl']
+# setnames(mut_excl,c('protein_1','protein_2'),c('Protein_1','Protein_2'))
+# mut_excl[Protein_1<Protein_2,`:=`(Protein_1=Protein_2,
+#                                   Protein_2 = Protein_1)]
+# mut_excl[Protein_1<Protein_2]
 
 struct_diff_plot = merge(combined_scores_summary[,.(Protein_1,Protein_2,avg_score)],
       mut_excl)
-  ggplot(struct_diff_plot,aes(x = interface_overlap,y = avg_score))+
+
+
+t_test = t.test(struct_diff_plot[class == 'mutually_exclusive' ,avg_score], 
+                struct_diff_plot[class != 'mutually_exclusive',avg_score], 
+                alternative = 'two.sided', var.equal = FALSE)
+  ggplot(struct_diff_plot,aes(x = class,y = avg_score))+
   geom_boxplot()+theme_bw()+
-    facet_wrap('cmmn_p_homodimer')+
-  labs(y = 'Mutually exclusivity ProCAN score',x = 'Interphase Overlap')
+ ggtitle('Compaaring ALL-IN score including new pairs revisions',subtitle = glue::glue('t.test pvalue<0.0001'))+
+    # labs(x= 'Class', 'ALL-IN Score')
+    # facet_wrap('cmmn_p_homodimer')+
+  labs(y = 'Mutually exclusivity ProCAN score (ALL-IN)',x = 'Class')
 ggsave(here::here('out','plots','structurally_consistent_vsmut_Excl.pdf'))
 
-t.test(struct_diff_plot[interface_overlap == 'yes' & cmmn_p_homodimer =='no',avg_score], 
-       struct_diff_plot[interface_overlap == 'no'& cmmn_p_homodimer =='no',avg_score], 
-       alternative = 'two.sided', var.equal = FALSE)
-
-t.test(struct_diff_plot[interface_overlap == 'yes' & cmmn_p_homodimer =='yes',avg_score], 
-       struct_diff_plot[interface_overlap == 'no'& cmmn_p_homodimer =='yes',avg_score], 
-       alternative = 'two.sided', var.equal = FALSE)
 # loaidng ProHD2 RF scores and removing isoform info
 ProHD2_treeclust_RF <- fread(here::here('out','datasets','RF_predictions.csv.gz'))
 ProHD2_treeclust_RF = ProHD2_treeclust_RF[,.(Protein_1,Protein_2,RF_covariation_prob)]
@@ -833,7 +840,7 @@ paralogs= merge(paralogs,paralog_pairs,by = c('Protein_1','Protein_2'))     |> a
 paralogs[,has_structure := !is.na(interface_overlap)]                 
 paralogs = paralogs[,.(Protein_1,Protein_2,ID.x,ID.y,interface_overlap,cmmn_p_homodimer,
                        has_structure,jaccard,avg_score )]
-
+fwrite(paralogs,here::here('out','datasets','paralogs_no-homo_ALL-IN.csv'))
 paralogs= paralogs[order(-avg_score), head(.SD,min(.N,1)), by = .(Protein_1,Protein_2)]
 
 
@@ -851,7 +858,7 @@ ggplot(paralogs,
   # ggrepel::geom_label_repel(data = Gene_names_complexes[ID.y %in% c('PSMB5','PSMB8','ARPC1B','ARPC1A') &
   #                                                           ID.x %in% c('PSMB5','PSMB8','ARPC1B','ARPC1A')  ])+
   ggrepel::geom_text_repel(max.overlaps = 10)
-ggsave(here::here('out','plots','mut_excpairs_pairs_paralogs_sep_structure.pdf'),width = 11,height = 9)
+ggsave(here::here('out','plots','mut_excpairs_pairs_paralogs_sep_structure.pdf'),width = 16,height = 12)
 
 
 pairs = mut_excl_plot[][avg_score<(-1.4),.(Protein_1,Protein_2,ID.x,ID.y)] |> unique()
